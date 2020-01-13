@@ -66,6 +66,7 @@ print(added)
 
 
 def feature_func(u,v, word_matrix, tag_matrix, word_map, tag_map):
+    word_matrix, tag_matrix = np.copy(word_matrix), np.copy(tag_matrix)
     word_matrix[word_map[u]][word_map[v]] = 1
     word_vec = make_sparse_vec(word_matrix)
     tup_place = 0
@@ -109,19 +110,52 @@ def feature_func(u,v, word_matrix, tag_matrix, word_map, tag_map):
 #     # TODO im not dealing with the case where u or v are the POS tag ROOT
 
 
-def perceptron(train_set, iterations=2, lr=1):
+def perceptronXX(train_set, word_matrix, word_map, tag_matrix, tag_map, iterations=2, lr=1):
     shuffled_train_set = train_set
+
+
     for i in range(iterations):
         shuffle(shuffled_train_set)
         pass
 
     pass
 
+def get_tree_sum(tree, vector_size, word_matrix, tag_matrix, word_map, tag_map):
+    # TODO - check function
+    sum = np.zeros(vector_size)
+    words = [tree.nodes[node_index]['word'] for node_index in tree.nodes]
+    for i in range(len(words)):
+        for j in range(len(words)):
+            sum += feature_func(words[i], words[j], word_matrix, tag_matrix, word_map, tag_map)
+    return sum
+
+
+def get_max_trees_score(trees, theta):
+    max_score = 0
+    for i in range:
+        pass
+
+def update_theta(theta, tree1, tree2, lr=1):
+    return theta + lr * (get_tree_sum(tree1) - get_tree_sum(tree2))
+
+def perceptron(train_set, word_matrix, word_map, tag_matrix, tag_map, N_iterations=2, lr=1):
+    vec_size = len(word_matrix)**2 + len(word_matrix)**2
+    theta = np.zeros(vec_size) # TODO do we initialize this as zeros?
+    N_sentences = len(train_set) # get the number of sentences
+    theta_vectors = np.array((N_iterations * N_sentences, vec_size))
+    theta_vectors[0] = theta
+    for r in range(N_iterations):
+        for i in range(N_sentences):
+            # TODO send one tree from trees? and find the mst for it?
+            T_tag = get_max_trees_score(trees, theta_vectors[(r-1)*N_sentences + i - 1])
+            theta_vectors[(r-1)*N_sentences + i] = update_theta()
+    return np.mean(theta_vectors)
+
+
+
 
 def score():
-    pass
-    # feat_vec = feature_func()
-    # w = perceptron()
+    w = perceptron()
 
 if __name__ == '__main__':
     trees = dependency_treebank.parsed_sents()
