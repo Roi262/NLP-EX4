@@ -56,7 +56,7 @@ def make_sparse_vec(matrix):
     length = np_arr.shape[0] * np_arr.shape[1]
     return np_arr.reshape((1, length))[0]
 
-def add_augmented_features(u, v, sent):
+def get_augmented_features(u, v, sent):
     augmented_features = [0] * 4
     u_indeces = []
     v_indeces = []
@@ -76,12 +76,15 @@ def add_augmented_features(u, v, sent):
                 augmented_features[2] = 1 
             if v_i - u_i > 3: # u preceds v with 3 or more words in between
                 augmented_features[4] = 1
+    positive_indeces = []
+    for i, val in enumerate(augmented_features):
+        if val == 1:
+            positive_indeces.append(i)
+    return np.array(augmented_features), positive_indeces
 
-    return np.array(augmented_features)
 
 
-
-def feature_func(u, v, word_matrix, tag_matrix, word_map, tag_map):
+def feature_func(u, v, word_matrix, tag_matrix, word_map, tag_map, augmented=False):
     """
 
     :param u:
@@ -94,17 +97,18 @@ def feature_func(u, v, word_matrix, tag_matrix, word_map, tag_map):
              - the indeces: [tup(int, int)]: a tuple consisting of the indeces where the feature function has the
              value 1
     """
-    # init size values
+    # init values
     word_matrix, tag_matrix = np.copy(word_matrix), np.copy(tag_matrix)
     word_matrix_rows, word_matrix_cols = word_matrix.shape
     word_matrix_size = word_matrix_rows * word_matrix_cols
     tag_matrix_rows, tag_matrix_cols = tag_matrix.shape
+    positive_indeces = [] 
 
     # bigram
     i, j = word_map[u], word_map[v]
     word_matrix[i][j] = 1
     word_vec = make_sparse_vec(word_matrix)
-    word_index = i * word_matrix_cols + j
+    positive_indeces.append(i * word_matrix_cols + j)
 
     # POS
     tup_place, pos_place = 0, 1
@@ -112,16 +116,20 @@ def feature_func(u, v, word_matrix, tag_matrix, word_map, tag_map):
     POS_v = nltk.pos_tag([v])[tup_place][pos_place]
     i2, j2 = tag_map[POS_u], tag_map[POS_v]
     tag_matrix[i2][j2] = 1
-    POS_index = word_matrix_size + (i2 * tag_matrix_cols + j2)
+    positive_indeces.append(word_matrix_size + (i2 * tag_matrix_cols + j2))
 
     tag_vec = make_sparse_vec(tag_matrix)
     sparse_vec = np.append(word_vec, tag_vec)
-    return sparse_vec, (word_index, POS_index)
+    if augmented:
+        augmented_feats, aug_pos_indeces = get_augmented_features(u,v, sent)
+        sparse_vec = np.append(sparse_vec, augmented_feats)
+        positive_indeces.extend(aug_pos_indeces)
+    return sparse_vec, np.array(positive_indeces)
 
 def create_feature_dict(train_set):
     feat_dic = {}
-    for i, word1 in tqdm(sent):
-        for j, word2 in tqdm(sent):
+    for word1 in tqdm(sent):
+        for word2 in tqdm(sent):
             # the feature vectors will now save only the indices with value 1:
             feat_dic[(word1, word2)] = feature_func(word1, word2,
                                                     word_matrix, tag_matrix, word_map, tag_map)[1]
