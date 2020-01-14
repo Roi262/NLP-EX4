@@ -187,7 +187,7 @@ def get_arcs(sent_feat_dict, sentence, theta):
 
 def create_list_of_feature_dic(train_sents, word_matrix, word_map, tag_matrix, tag_map):
     list_feat_dics = []
-    for sent in enumerate(train_sents):
+    for i,sent in enumerate(train_sents):
         feat_dict = {}
         for word1 in sent:
             for word2 in sent:
@@ -241,9 +241,9 @@ def perceptron(trees_train,sents_train, word_matrix, word_map, tag_matrix, tag_m
     vec_size = word_matrix.shape[0]**2 + tag_matrix.shape[0]**2
     theta = np.zeros(vec_size)
     N_sentences = len(trees_train) # get the number of sentences
-    theta_vectors = np.array((N_iterations * N_sentences, vec_size))
-    theta_vectors[0] = theta
-    list_feat_dict = create_list_of_feature_dic(trees_train,word_matrix, word_map, tag_matrix, tag_map)
+    # theta_vectors = np.zeros((N_iterations * N_sentences, vec_size))
+    theta_sum = np.zeros(vec_size)
+    list_feat_dict = create_list_of_feature_dic(sents_train,word_matrix, word_map, tag_matrix, tag_map)
     trees_orderes_tups = list_of_word_tup_per_tree(trees_train)
     for r in range(N_iterations):
         for i in range(N_sentences):
@@ -251,28 +251,28 @@ def perceptron(trees_train,sents_train, word_matrix, word_map, tag_matrix, tag_m
             sentence = sents_train[i]
             sent_feat_dict = list_feat_dict[i]
             theta_index = (r-1)*N_sentences + i
-            arcs = get_arcs(sent_feat_dict, sentence, theta_vectors[theta_index - 1])
+            arcs = get_arcs(sent_feat_dict, sentence, theta)
             # TODO check where to negativize the theta (or the arcs)
             MST_TAG = min_spanning_arborescence(arcs=arcs, sink=0)
-            feat_diff = get_diff(MST_TAG,mst_i_tups,theta_vectors[theta_index-1], sent_feat_dict)
-            theta_vectors[theta_index] = theta_vectors[theta_index-1] + lr * feat_diff
-    return np.mean(theta_vectors)
+            feat_diff = get_diff(MST_TAG,mst_i_tups,theta, sent_feat_dict)
+            new_theta = theta + lr * feat_diff
+            theta_sum += theta
+            theta = new_theta
+    return theta_sum/(N_iterations*N_sentences)
 
 
-def score():
-    w = perceptron()
+# def score():
+#     w = perceptron()
 
 
 if __name__ == '__main__':
-    trees = dependency_treebank.parsed_sents()
-    sents = dependency_treebank.sents()
-    # nd = n.nodes
-    # x = n.tree()
-    # print(x)
-    corpus, POS_tags = get_corpus_and_tags_from_trees(trees)
+    trees_train = dependency_treebank.parsed_sents()
+    sents_train = dependency_treebank.sents()
+    corpus, POS_tags = get_corpus_and_tags_from_trees(trees_train)
     word_matrix, word_map = create_matrix(corpus)
     tag_matrix, tag_map = create_matrix(POS_tags)
     f = 0
+    w = perceptron(trees_train,sents_train,word_matrix,word_map,tag_matrix,tag_map)
 
 
 
