@@ -86,7 +86,7 @@ def feature_func(u, v, word_matrix, tag_matrix, word_map, tag_map):
              value 1
     """
     # init size values
-    word_matrix, tag_matrix = np.copy(word_matrix), np.copy(tag_matrix)
+    word_matrix, tag_matrix = np.copy(word_matrix), np.copy(tag_matrix) #todo maybe it can be removed in the new method.
     word_matrix_rows, word_matrix_cols = word_matrix.shape
     word_matrix_size = word_matrix_rows * word_matrix_cols
     tag_matrix_rows, tag_matrix_cols = tag_matrix.shape
@@ -175,39 +175,87 @@ def create_graph(corpus, word_map, theta):
     return arcs
 
 
-def get_arcs(feature_dict, theta, corpus):
+def get_arcs(sent_feat_dict, sentence, theta):
     arcs = []
-    for i, word1 in enumerate(corpus):
-        for j, word2 in enumerate(corpus):
-            head = word1
-            tail = word2
-            weight = np.sum(theta.take(feature_dict[(head, tail)][1]))
+    for head in enumerate(sentence):
+        for tail in enumerate(sentence):
+            weight = np.sum(theta.take(sent_feat_dict[(head, tail)][1]))
             # weight = np.sum([theta[s] for s in feature_dict[(head, tail)]])
             arc = Arc(head, weight, tail)
             arcs.append(arc)
     return arcs
 
+def create_list_of_feature_dic(train_sents, word_matrix, word_map, tag_matrix, tag_map):
+    list_feat_dics = []
+    for sent in enumerate(train_sents):
+        feat_dict = {}
+        for word1 in sent:
+            for word2 in sent:
+                feat_dict[(word1,word2)] = feature_func(word1,word2,word_matrix,tag_matrix,word_map,tag_map)
+        list_feat_dics.append(feat_dict)
+    return list_feat_dics
 
-def perceptron(trees_train, word_matrix, word_map, tag_matrix, tag_map, feature_dict, corpus, N_iterations=2, lr=1):
-    ETA = 1
+def get_real_tree(tree, sent_feat):
+    """returns feature vector only on the train edges of the tree (the tree from the train set)"""
+    feat_dict = {}
+    for node in tree.nodes:
+        tail = tree.nodes[node]['word']
+        head_idx = tree.nodes[node]['head']
+        head = tree.nodes[head_idx]['word']
+        feat_dict[(head,tail)] = sent_feat[(head,tail)]
+    return feat_dict
+
+
+def get_diff(mst_tag,mst_i_tups ,theta, sent_feat_dict):
+    """
+
+    :param mst_tag: mst as coming back from CLE algorithem
+    :param mst_i_tups: tuples from helper function each tup is (head,tail)
+    :param theta: current theta vector
+    :param sent_feat_dict: feature dictionary of specific sentnce.
+    :return:
+    """
+    mst_tag_score = 0
+    mst_i_score = 0
+    for arc in mst_tag:
+        mst_tag_score += mst_tag[arc].weight
+    for tup in mst_i_tups:
+        mst_tag_score += np.sum(theta.take(sent_feat_dict[tup]))
+    return (mst_tag_score-mst_i_score)
+
+
+def list_of_word_tup_per_tree(trees_train):
+    tree_list_of_tup_words = []
+    for i,tree in enumerate(trees_train):
+        tree_list = []
+        for node in tree.nodes:
+            tail = tree.nodes[node]['word']
+            head_idx = tree.nodes[node]['head']
+            head = tree.nodes[head_idx]['word']
+            tree_list.append((head,tail))
+        tree_list_of_tup_words.append(tree_list)
+    return tree_list_of_tup_words
+
+
+def perceptron(trees_train,sents_train, word_matrix, word_map, tag_matrix, tag_map, N_iterations=2, lr=1):
     vec_size = word_matrix.shape[0]**2 + tag_matrix.shape[0]**2
     theta = np.zeros(vec_size)
     N_sentences = len(trees_train) # get the number of sentences
     theta_vectors = np.array((N_iterations * N_sentences, vec_size))
     theta_vectors[0] = theta
+    list_feat_dict = create_list_of_feature_dic(trees_train,word_matrix, word_map, tag_matrix, tag_map)
+    trees_orderes_tups = list_of_word_tup_per_tree(trees_train)
     for r in range(N_iterations):
         for i in range(N_sentences):
-            tree = trees_train[i]
+            mst_i_tups = trees_orderes_tups[i]
+            sentence = sents_train[i]
+            sent_feat_dict = list_feat_dict[i]
             theta_index = (r-1)*N_sentences + i
-            arcs = get_arcs(feature_dict,theta_vectors[theta_index - 1], corpus)
+            arcs = get_arcs(sent_feat_dict, sentence, theta_vectors[theta_index - 1])
             # TODO check where to negativize the theta (or the arcs)
             MST_TAG = min_spanning_arborescence(arcs=arcs, sink=0)
-            feat_diff = 1
-            theta_vectors[theta_index] = theta_vectors[theta_index-1] + ETA*feat_diff
-
-            # # TODO send one tree from trees? and find the mst for it?
-            # T_tag = get_max_trees_score(arcs , theta_vectors[theta_index - 1])
-            # theta_vectors[theta_index] = update_theta()
+            feat_diff = get_diff(MST_TAG,mst_i_tups,theta_vectors[theta_index-1], sent_feat_dict)
+            theta_vectors[theta_index] = theta_vectors[theta_index-1] + lr * feat_diff
     return np.mean(theta_vectors)
 
 
@@ -217,9 +265,7 @@ def score():
 
 if __name__ == '__main__':
     trees = dependency_treebank.parsed_sents()
-    n= trees[0]
-    for node in n.nodes:
-        print(node)
+    sents = dependency_treebank.sents()
     # nd = n.nodes
     # x = n.tree()
     # print(x)
