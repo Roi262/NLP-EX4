@@ -147,7 +147,7 @@ def perceptron(train_set, word_matrix, word_map, tag_matrix, tag_map, N_iteratio
     for r in range(N_iterations):
         for i in range(N_sentences):
             # TODO send one tree from trees? and find the mst for it?
-            T_tag = get_max_trees_score(trees, theta_vectors[(r-1)*N_sentences + i - 1])
+            T_tag = get_max_trees_score(arcs , theta_vectors[(r-1)*N_sentences + i - 1])
             theta_vectors[(r-1)*N_sentences + i] = update_theta()
     return np.mean(theta_vectors)
 
