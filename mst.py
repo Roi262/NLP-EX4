@@ -56,21 +56,30 @@ def make_sparse_vec(matrix):
     length = np_arr.shape[0] * np_arr.shape[1]
     return np_arr.reshape((1, length))[0]
 
-# TESTER LINES
-# mat = np.arange(9).reshape((3, 3))
+def add_augmented_features(u, v, sent):
+    augmented_features = [0] * 4
+    u_indeces = []
+    v_indeces = []
+    for i, word in enumerate(sent):
+        if word == u:
+            u_indeces.append(i)
+        if word == v:
+            v_indeces.append(i)
+    
+    for u_i in u_indeces:
+        for v_i in v_indeces:
+            if v_i - u_i == 1: # u preceds v with 0 words in between
+                augmented_features[0] = 1
+            if v_i - u_i == 2: # u preceds v with 1 word in between
+                augmented_features[1] = 1
+            if v_i - u_i == 3: # u precedes v with 2 words in between
+                augmented_features[2] = 1 
+            if v_i - u_i > 3: # u preceds v with 3 or more words in between
+                augmented_features[4] = 1
+
+    return np.array(augmented_features)
 
 
-# l = csr_matrix((3, 4)).toarray()
-# l = np.arange(15).reshape((3,5))
-# # print(l)
-# x = make_sparse_vec(mat)
-# y = make_sparse_vec(l)
-# print(x)
-# print(y)
-# added = np.append(x,y)
-# print(added)
-
-# def get_indeces()
 
 def feature_func(u, v, word_matrix, tag_matrix, word_map, tag_map):
     """
@@ -81,7 +90,7 @@ def feature_func(u, v, word_matrix, tag_matrix, word_map, tag_map):
     :param tag_matrix: [np.darray]:
     :param word_map:
     :param tag_map:
-    :return: - the feature vector: [np. array] an array representing the computedd feature vector
+    :return: - the feature vector: [np. array] an array representing the computed feature vector
              - the indeces: [tup(int, int)]: a tuple consisting of the indeces where the feature function has the
              value 1
     """
@@ -109,6 +118,14 @@ def feature_func(u, v, word_matrix, tag_matrix, word_map, tag_map):
     sparse_vec = np.append(word_vec, tag_vec)
     return sparse_vec, (word_index, POS_index)
 
+def create_feature_dict(train_set):
+    feat_dic = {}
+    for i, word1 in tqdm(sent):
+        for j, word2 in tqdm(sent):
+            # the feature vectors will now save only the indices with value 1:
+            feat_dic[(word1, word2)] = feature_func(word1, word2,
+                                                    word_matrix, tag_matrix, word_map, tag_map)[1]
+    return feat_dic
 
 
 def create_or_load_feature_dict(word_matrix, tag_matrix, word_map, tag_map):
@@ -125,46 +142,17 @@ def create_or_load_feature_dict(word_matrix, tag_matrix, word_map, tag_map):
     feat_dict_path = "feature_dict.pkl"
     if not os.path.exists(feat_dict_path):
         feat_dic = {}
-        for i, word1 in tqdm(enumerate(corpus)):
-            for j, word2 in tqdm(enumerate(corpus)):
+        for i, word1 in tqdm(enumerate(sent)):
+            for j, word2 in tqdm(enumerate(sent)):
                 # the feature vectors will now save only the indices with value 1:
-                feat_dic[(word1, word2)] = feature_func(word1, word2, word_matrix, tag_matrix, word_map, tag_map)[1]
+                feat_dic[(word1, word2)] = feature_func(word1, word2,
+                                                        word_matrix, tag_matrix, word_map, tag_map)[1]
         # if cache_w2v:
         save_pickle(feat_dic, feat_dict_path)
     else:
         feat_dic = load_pickle(feat_dict_path)
     return feat_dic
 
-# def get_tree_sum(tree, vector_size, word_matrix, tag_matrix, word_map, tag_map):
-#     # TODO - check function
-#     sum = np.zeros(vector_size)
-#     words = [tree.nodes[node_index]['word'] for node_index in tree.nodes]
-#     for i in range(len(words)):
-#         for j in range(len(words)):
-#             sum += feature_func(words[i], words[j], word_matrix, tag_matrix, word_map, tag_map)
-#     return sum
-#
-#
-# def get_max_trees_score(trees, theta):
-#     max_score = 0
-#     for i in range:
-#         pass
-#
-# def update_theta(theta, tree1, tree2, lr=1):
-#     return theta + lr * (get_tree_sum(tree1) - get_tree_sum(tree2))
-#
-# def perceptron(train_set, word_matrix, word_map, tag_matrix, tag_map, N_iterations=2, lr=1):
-#     vec_size = len(word_matrix)**2 + len(word_matrix)**2
-#     theta = np.zeros(vec_size) # TODO do we initialize this as zeros?
-#     N_sentences = len(train_set) # get the number of sentences
-#     theta_vectors = np.array((N_iterations * N_sentences, vec_size))
-#     theta_vectors[0] = theta
-#     for r in range(N_iterations):
-#         for i in range(N_sentences):
-#             # TODO send one tree from trees? and find the mst for it?
-#             T_tag = get_max_trees_score(arcs , theta_vectors[(r-1)*N_sentences + i - 1])
-#             theta_vectors[(r-1)*N_sentences + i] = update_theta()
-#     return np.mean(theta_vectors)
 
 def create_graph(corpus, word_map, theta):
     arcs = []
@@ -192,18 +180,20 @@ def perceptron(trees_train, word_matrix, word_map, tag_matrix, tag_map, feature_
     ETA = 1
     vec_size = word_matrix.shape[0]**2 + tag_matrix.shape[0]**2
     theta = np.zeros(vec_size)
-    N_sentences = len(trees_train) # get the number of sentences
+    N_sentences = len(trees_train)  # get the number of sentences
     theta_vectors = np.array((N_iterations * N_sentences, vec_size))
     theta_vectors[0] = theta
     for r in range(N_iterations):
         for i in range(N_sentences):
             tree = trees_train[i]
             theta_index = (r-1)*N_sentences + i
-            arcs = get_arcs(feature_dict,theta_vectors[theta_index - 1], corpus)
+            arcs = get_arcs(
+                feature_dict, theta_vectors[theta_index - 1], corpus)
             # TODO check where to negativize the theta (or the arcs)
             MST_TAG = min_spanning_arborescence(arcs=arcs, sink=0)
             feat_diff = 1
-            theta_vectors[theta_index] = theta_vectors[theta_index-1] + ETA*feat_diff
+            theta_vectors[theta_index] = theta_vectors[theta_index -
+                                                       1] + ETA*feat_diff
 
             # # TODO send one tree from trees? and find the mst for it?
             # T_tag = get_max_trees_score(arcs , theta_vectors[theta_index - 1])
@@ -217,18 +207,16 @@ def score():
 
 if __name__ == '__main__':
     trees = dependency_treebank.parsed_sents()
-    n= trees[0]
+    n = trees[0]
     for node in n.nodes:
         print(node)
     # nd = n.nodes
     # x = n.tree()
     # print(x)
-    corpus, POS_tags = get_corpus_and_tags_from_trees(trees)
-    word_matrix, word_map = create_matrix(corpus)
+    sent, POS_tags = get_corpus_and_tags_from_trees(trees)
+    word_matrix, word_map = create_matrix(sent)
     tag_matrix, tag_map = create_matrix(POS_tags)
     f = 0
-
-
 
     # feature_dict = create_or_load_feature_dict(word_matrix, tag_matrix, word_map, tag_map)
     # k = feature_func('Pierre','Vinken',word_matrix,tag_matrix,word_map,tag_map)
