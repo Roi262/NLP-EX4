@@ -17,6 +17,77 @@ SEP = ' - '
 
 # print(train)
 
+def get_augmented_features(u, v, sent, last_index=0):
+    """Q4"""
+    augmented_features = [0] * 4
+    u_indeces = []
+    v_indeces = []
+    for i, word in enumerate(sent):
+        if word == u:
+            u_indeces.append(i)
+        if word == v:
+            v_indeces.append(i)
+
+    for u_i in u_indeces:
+        for v_i in v_indeces:
+            if v_i - u_i == 1: # u preceds v with 0 words in between
+                augmented_features[0] = 1
+            if v_i - u_i == 2: # u preceds v with 1 word in between
+                augmented_features[1] = 1
+            if v_i - u_i == 3: # u precedes v with 2 words in between
+                augmented_features[2] = 1
+            if v_i - u_i > 3: # u preceds v with 3 or more words in between
+                augmented_features[4] = 1
+    positive_indeces = []
+    for i, val in enumerate(augmented_features):
+        if val == 1:
+            positive_indeces.append(i + last_index)
+    return np.array(augmented_features), positive_indeces
+
+
+
+def feature_func(u, v, word_matrix, tag_matrix, word_map, tag_map, sent = None, augmented=False):
+    """
+
+    :param u:
+    :param v:
+    :param word_matrix: [np.darray]:
+    :param tag_matrix: [np.darray]:
+    :param word_map:
+    :param tag_map:
+    :return: - the feature vector: [np. array] an array representing the computed feature vector
+             - the indeces: [tup(int, int)]: a tuple consisting of the indeces where the feature function has the
+             value 1
+    """
+    # init values
+    word_matrix_rows, word_matrix_cols = word_matrix.shape
+    word_matrix_size = word_matrix_rows * word_matrix_cols
+    tag_matrix_rows, tag_matrix_cols = tag_matrix.shape
+    tag_matrix_size = tag_matrix_rows*tag_matrix_cols
+    positive_indeces = []
+
+    # bigram
+    i, j = word_map[u], word_map[v]
+    # word_matrix[i][j] = 1
+    word_vec = make_sparse_vec(word_matrix)
+    positive_indeces.append(i * word_matrix_cols + j)
+
+    # POS
+    tup_place, pos_place = 0, 1
+    POS_u = nltk.pos_tag([u])[tup_place][pos_place]
+    POS_v = nltk.pos_tag([v])[tup_place][pos_place]
+    i2, j2 = tag_map[POS_u], tag_map[POS_v]
+    # tag_matrix[i2][j2] = 1
+    positive_indeces.append(word_matrix_size + (i2 * tag_matrix_cols + j2))
+
+    tag_vec = make_sparse_vec(tag_matrix)
+    # sparse_vec = np.append(word_vec, tag_vec)
+    if augmented:
+        augmented_feats, aug_pos_indeces = get_augmented_features(u,v, sent, last_index=word_matrix_size + tag_matrix_size)
+        # sparse_vec = np.append(sparse_vec, augmented_feats)
+        positive_indeces.extend(aug_pos_indeces)
+    return np.array(positive_indeces)
+
 
 def get_corpus_and_tags_from_trees(trees):
     """
@@ -72,43 +143,6 @@ def make_sparse_vec(matrix):
 
 # def get_indeces()
 
-def feature_func(u, v, word_matrix, tag_matrix, word_map, tag_map):
-    """
-
-    :param u:
-    :param v:
-    :param word_matrix: [np.darray]:
-    :param tag_matrix: [np.darray]:
-    :param word_map:
-    :param tag_map:
-    :return: - the feature vector: [np. array] an array representing the computedd feature vector
-             - the indeces: [tup(int, int)]: a tuple consisting of the indeces where the feature function has the
-             value 1
-    """
-    # init size values
-    word_matrix, tag_matrix = np.copy(word_matrix), np.copy(tag_matrix) #todo maybe it can be removed in the new method.
-    word_matrix_rows, word_matrix_cols = word_matrix.shape
-    word_matrix_size = word_matrix_rows * word_matrix_cols
-    tag_matrix_rows, tag_matrix_cols = tag_matrix.shape
-
-    # bigram
-    i, j = word_map[u], word_map[v]
-    word_matrix[i][j] = 1
-    word_vec = make_sparse_vec(word_matrix)
-    word_index = i * word_matrix_cols + j
-
-    # POS
-    tup_place, pos_place = 0, 1
-    POS_u = nltk.pos_tag([u])[tup_place][pos_place]
-    POS_v = nltk.pos_tag([v])[tup_place][pos_place]
-    i2, j2 = tag_map[POS_u], tag_map[POS_v]
-    tag_matrix[i2][j2] = 1
-    POS_index = word_matrix_size + (i2 * tag_matrix_cols + j2)
-
-    tag_vec = make_sparse_vec(tag_matrix)
-    sparse_vec = np.append(word_vec, tag_vec)
-    return sparse_vec, (word_index, POS_index)
-
 
 
 def create_or_load_feature_dict(word_matrix, tag_matrix, word_map, tag_map):
@@ -128,7 +162,7 @@ def create_or_load_feature_dict(word_matrix, tag_matrix, word_map, tag_map):
         for i, word1 in tqdm(enumerate(corpus)):
             for j, word2 in tqdm(enumerate(corpus)):
                 # the feature vectors will now save only the indices with value 1:
-                feat_dic[(word1, word2)] = feature_func(word1, word2, word_matrix, tag_matrix, word_map, tag_map)[1]
+                feat_dic[(word1, word2)] = feature_func(word1, word2, word_matrix, tag_matrix, word_map, tag_map)
         # if cache_w2v:
         save_pickle(feat_dic, feat_dict_path)
     else:
@@ -186,13 +220,25 @@ def get_arcs(sent_feat_dict, sentence, theta):
     return arcs
 
 def create_list_of_feature_dic(train_sents, word_matrix, word_map, tag_matrix, tag_map):
-    list_feat_dics = []
-    for i,sent in enumerate(train_sents):
-        feat_dict = {}
-        for word1 in sent:
-            for word2 in sent:
-                feat_dict[(word1,word2)] = feature_func(word1,word2,word_matrix,tag_matrix,word_map,tag_map)
-        list_feat_dics.append(feat_dict)
+    # list_feat_dics = []
+    # for sent in tqdm(train_sents):
+    #     feat_dict = {}
+    #     for word1 in sent:
+    #         for word2 in sent:
+    #             feat_dict[(word1,word2)] = feature_func(word1,word2,word_matrix,tag_matrix,word_map,tag_map)
+    #     list_feat_dics.append(feat_dict)
+
+    list_feat_dict = "list_feat_dict.pkl"
+    if not os.path.exists(list_feat_dict):
+        list_feat_dics = []
+        for sent in tqdm(train_sents):
+            feat_dict = {}
+            for word1 in sent:
+                for word2 in sent:
+                    feat_dict[(word1,word2)] = feature_func(word1,word2,word_matrix,tag_matrix,word_map,tag_map)
+            list_feat_dics.append(feat_dict)
+    else:
+        list_feat_dics = load_pickle(list_feat_dict)
     return list_feat_dics
 
 def get_real_tree(tree, sent_feat):
@@ -245,8 +291,8 @@ def perceptron(trees_train,sents_train, word_matrix, word_map, tag_matrix, tag_m
     theta_sum = np.zeros(vec_size)
     list_feat_dict = create_list_of_feature_dic(sents_train,word_matrix, word_map, tag_matrix, tag_map)
     trees_orderes_tups = list_of_word_tup_per_tree(trees_train)
-    for r in range(N_iterations):
-        for i in range(N_sentences):
+    for r in tqdm(range(N_iterations)):
+        for i in tqdm(range(N_sentences)):
             mst_i_tups = trees_orderes_tups[i]
             sentence = sents_train[i]
             sent_feat_dict = list_feat_dict[i]
@@ -255,8 +301,8 @@ def perceptron(trees_train,sents_train, word_matrix, word_map, tag_matrix, tag_m
             # TODO check where to negativize the theta (or the arcs)
             MST_TAG = min_spanning_arborescence(arcs=arcs, sink=0)
             feat_diff = get_diff(MST_TAG,mst_i_tups,theta, sent_feat_dict)
-            new_theta = theta + lr * feat_diff
-            theta_sum += theta
+            new_theta = theta + (lr * feat_diff)
+            theta_sum += new_theta
             theta = new_theta
     return theta_sum/(N_iterations*N_sentences)
 
@@ -267,7 +313,9 @@ def perceptron(trees_train,sents_train, word_matrix, word_map, tag_matrix, tag_m
 
 if __name__ == '__main__':
     trees_train = dependency_treebank.parsed_sents()
-    sents_train = dependency_treebank.sents()
+    sents_train = list(dependency_treebank.sents())
+    # for sent in sents_train:
+    #     print(sent)
     corpus, POS_tags = get_corpus_and_tags_from_trees(trees_train)
     word_matrix, word_map = create_matrix(corpus)
     tag_matrix, tag_map = create_matrix(POS_tags)
