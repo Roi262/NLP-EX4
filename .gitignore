@@ -1,2 +1,6 @@
 /venv
 .vscode
+list_feat_dict_test.pkl
+list_feat_dict_train.pkl
+list_tup_per_tree_train.pkl
+list_tup_per_tree_test.pkl
