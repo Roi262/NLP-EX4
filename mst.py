@@ -129,14 +129,14 @@ def get_arcs(sent_feat_dict, sentence, theta):
         for j, tail in enumerate(sentence):
             if i==j:
                 continue
-            weight = -1 * np.sum(theta.take(sent_feat_dict[(head, tail)]))
+            weight = np.sum(theta.take(sent_feat_dict[(head, tail)]))
             # weight = np.sum([theta[s] for s in feature_dict[(head, tail)]])
             arc = Arc(head, weight, tail)
             arcs.append(arc)
     return arcs
 
 def create_list_of_feature_dic(train_sents, word_matrix_size, word_map, tag_matrix_size, tag_map, pkl_path,
-                               pickles=False, augmented=False):
+                               pickles=True, augmented=False):
     if pickles:
         list_feat_dict_path = pkl_path
         if not os.path.exists(list_feat_dict_path):
@@ -247,7 +247,7 @@ def perceptron(trees_train, sents_train, word_matrix_size, word_map, tag_matrix_
 def compare_tree(pred_tree_arcs, y_tree_tups):
     counter = 0
     for arc in pred_tree_arcs:
-        pred_tup = (pred_tree_arcs[arc].head,pred_tree_arcs[arc].weight)
+        pred_tup = (pred_tree_arcs[arc].head,pred_tree_arcs[arc].tail)
         if pred_tup in y_tree_tups:
             counter += 1
     return counter
@@ -274,8 +274,8 @@ def main():
     #     print(sent)
     #
     # TESTER LINES
-    sents = sents[:500]
-    trees = trees[:500]
+    sents = sents
+    trees = trees
     #############
     split_index = int(len(sents) * 0.9)
     trees_train = trees[:split_index]
