@@ -72,7 +72,8 @@ def feature_func(u, v, word_matrix_size, tag_matrix_size, word_map, tag_map, sen
         aug_pos_indeces = get_augmented_features(
             u, v, sent, last_index=word_matrix_size + tag_matrix_size)
         positive_indeces.extend(aug_pos_indeces)
-    return np.array(positive_indeces)
+    # a = (np.array(positive_indeces))
+    return np.array(positive_indeces).astype(np.int)
 
 
 
@@ -98,40 +99,19 @@ def create_matrix(tokens):
     """
     create the matrix from the given corpus
     corpus: [list] a list of tokens
-    :return:
+    :return: [tuple] (the size of the 'matrix', w2i dict)
     """
     V_Size = len(tokens)
-    word_to_index_map = {}
-    for i in range(V_Size):
-        word_to_index_map[tokens[i]] = i
-    matrix = csr_matrix((V_Size, V_Size)).toarray()
-    # TODO create scipy or numpy array
-    return matrix, word_to_index_map
+    w2i = dict(zip(tokens, range(V_Size)))
 
+    # matrix = csr_matrix((V_Size, V_Size)).toarray()
+    # TODO create scipy or numpy array
+    return V_Size**2, w2i
 
 def make_sparse_vec(matrix):
     np_arr = np.asarray(matrix)
     length = np_arr.shape[0] * np_arr.shape[1]
     return np_arr.reshape((1, length))[0]
-
-# TESTER LINES
-# mat = np.arange(9).reshape((3, 3))
-
-
-# l = csr_matrix((3, 4)).toarray()
-# l = np.arange(15).reshape((3,5))
-# # print(l)
-# x = make_sparse_vec(mat)
-# y = make_sparse_vec(l)
-# print(x)
-# print(y)
-# added = np.append(x,y)
-# print(added)
-
-# def get_indeces()
-
-
-
 
 
 def create_graph(corpus, word_map, theta):
@@ -145,17 +125,35 @@ def create_graph(corpus, word_map, theta):
 
 def get_arcs(sent_feat_dict, sentence, theta):
     arcs = []
-    for head in sentence:
-        for tail in sentence:
-            weight = np.sum(theta.take(sent_feat_dict[(head, tail)]))
+    for i, head in enumerate(sentence):
+        for j, tail in enumerate(sentence):
+            if i==j:
+                continue
+            weight = -1 * np.sum(theta.take(sent_feat_dict[(head, tail)]))
             # weight = np.sum([theta[s] for s in feature_dict[(head, tail)]])
             arc = Arc(head, weight, tail)
             arcs.append(arc)
     return arcs
 
-def create_list_of_feature_dic(train_sents, word_matrix, word_map, tag_matrix, tag_map):
-    list_feat_dict_path = "list_feat_dict.pkl"
-    if not os.path.exists(list_feat_dict_path):
+def create_list_of_feature_dic(train_sents, word_matrix_size, word_map, tag_matrix_size, tag_map, pkl_path,
+                               pickles=False, augmented=False):
+    if pickles:
+        list_feat_dict_path = pkl_path
+        if not os.path.exists(list_feat_dict_path):
+            list_feat_dics = []
+            for sent in tqdm(train_sents):
+                feat_dict = {}
+                for i, word1 in enumerate(sent):
+                    for j, word2 in enumerate(sent):
+                        if (i == j):
+                            continue
+                        feat_dict[(word1,word2)] = feature_func(word1, word2, word_matrix_size, tag_matrix_size,
+                                                                word_map, tag_map, augmented=augmented)
+                list_feat_dics.append(feat_dict)
+            save_pickle(list_feat_dics,list_feat_dict_path)
+        else:
+            list_feat_dics = load_pickle(list_feat_dict_path)
+    else:
         list_feat_dics = []
         for sent in tqdm(train_sents):
             feat_dict = {}
@@ -163,11 +161,10 @@ def create_list_of_feature_dic(train_sents, word_matrix, word_map, tag_matrix, t
                 for j, word2 in enumerate(sent):
                     if (i == j):
                         continue
-                    feat_dict[(word1,word2)] = feature_func(word1,word2,word_matrix,tag_matrix,word_map,tag_map)
+                    feat_dict[(word1,word2)] = feature_func(word1, word2, word_matrix_size, tag_matrix_size,
+                                                            word_map, tag_map, augmented=augmented)
             list_feat_dics.append(feat_dict)
-        save_pickle(list_feat_dics,list_feat_dict_path)
-    else:
-        list_feat_dics = load_pickle(list_feat_dict_path)
+
     return list_feat_dics
 
 def get_diff(mst_tag,mst_i_tups ,theta, sent_feat_dict):
@@ -191,8 +188,8 @@ def get_diff(mst_tag,mst_i_tups ,theta, sent_feat_dict):
     return (mst_tag_score-mst_i_score)
 
 
-def list_of_word_tup_per_tree(trees_train):
-    list_tup_per_tree_path = "list_tup_per_tree.pkl"
+def list_of_word_tup_per_tree(trees_train, pkl_path):
+    list_tup_per_tree_path = pkl_path
     if not os.path.exists(list_tup_per_tree_path):
         tree_list_of_tup_words = []
         for tree in trees_train:
@@ -212,58 +209,96 @@ def list_of_word_tup_per_tree(trees_train):
     return tree_list_of_tup_words
 
 
-def perceptron(trees_train,sents_train, word_matrix, word_map, tag_matrix, tag_map, N_iterations=2, lr=1):
-    vec_size = word_matrix.shape[0]**2 + tag_matrix.shape[0]**2
+def perceptron(trees_train, sents_train, word_matrix_size, word_map, tag_matrix_size, tag_map, N_iterations=2, lr=1,
+               augmented=False):
+    vec_size = word_matrix_size + tag_matrix_size
+    if augmented:
+        vec_size += AUGMENT_FACTOR
     theta = np.zeros(vec_size)
     N_sentences = len(trees_train) # get the number of sentences
     # theta_vectors = np.zeros((N_iterations * N_sentences, vec_size))
     theta_sum = np.zeros(vec_size)
-    list_feat_dict = create_list_of_feature_dic(sents_train,word_matrix, word_map, tag_matrix, tag_map)
-    trees_orderes_tups = list_of_word_tup_per_tree(trees_train)
+    list_feat_dict = create_list_of_feature_dic(sents_train, word_matrix_size, word_map, tag_matrix_size, tag_map,
+                                                pickles=True,
+                                                pkl_path="list_feat_dict_train.pkl",
+                                                augmented=augmented)
+    trees_orderes_tups = list_of_word_tup_per_tree(trees_train, "list_tup_per_tree_train.pkl")
+    permutation = np.random.permutation(N_sentences)
     for r in range(N_iterations):
         print("Epoch ", r)
-        for i in tqdm(range(N_sentences)):
+        for i in tqdm(permutation):
             mst_i_tups = trees_orderes_tups[i]
             sentence = sents_train[i]
             sent_feat_dict = list_feat_dict[i]
             theta_index = (r-1)*N_sentences + i
             arcs = get_arcs(sent_feat_dict, sentence, theta)
-            # TODO check where to negativize the theta (or the arcs)
             MST_TAG = min_spanning_arborescence(arcs=arcs, sink=0)
-            print(arcs)
+            # print(arcs)
             feat_diff = get_diff(MST_TAG,mst_i_tups,theta, sent_feat_dict)
             new_theta = theta + (lr * feat_diff)
+            pre_theta_sum = theta_sum
             theta_sum += new_theta
             theta = new_theta
-    out_theta = theta_sum/(N_iterations*N_sentences)
+            # print(np.all(np.equal(pre_theta_sum,theta_sum)))
+    out_theta = theta_sum.astype(np.float)/(N_iterations*N_sentences)
     return out_theta
 
 
-# def score():
-#     w = perceptron()
+def compare_tree(pred_tree_arcs, y_tree_tups):
+    counter = 0
+    for arc in pred_tree_arcs:
+        pred_tup = (pred_tree_arcs[arc].head,pred_tree_arcs[arc].weight)
+        if pred_tup in y_tree_tups:
+            counter += 1
+    return counter
 
 
-if __name__ == '__main__':
-    trees_train = dependency_treebank.parsed_sents()
-    sents_train = list(dependency_treebank.sents())
+def evaluate(theta, tree_test, sent_test, t_list_feat_dict, augmented = False):
+
+    trees_orderes_tups = list_of_word_tup_per_tree(tree_test, "list_tup_per_tree_test.pkl")
+    all_scores = 0
+    for i,sentence in enumerate(sent_test):
+        y_tree_tups = trees_orderes_tups[i]
+        sent_feat_dict = t_list_feat_dict[i]
+        arcs = get_arcs(sent_feat_dict, sentence, theta)
+        pred_tree = min_spanning_arborescence(arcs=arcs, sink=0)
+        num_of_sim_arcs = compare_tree(pred_tree,y_tree_tups)
+        all_scores += float(num_of_sim_arcs)/len(sentence)
+    return float(all_scores)/len(sent_test)
+
+def main():
+    trees = dependency_treebank.parsed_sents()
+    sents = list(dependency_treebank.sents())
+
     # for sent in sents_train:
     #     print(sent)
-    corpus, POS_tags = get_corpus_and_tags_from_trees(trees_train)
-    word_matrix, word_map = create_matrix(corpus)
-    tag_matrix, tag_map = create_matrix(POS_tags)
-    f = 0
-    w = perceptron(trees_train,sents_train,word_matrix,word_map,tag_matrix,tag_map)
-
-
-
-    # feature_dict = create_or_load_feature_dict(word_matrix, tag_matrix, word_map, tag_map)
-    # k = feature_func('Pierre','Vinken',word_matrix,tag_matrix,word_map,tag_map)
-    # print(np.argwhere(k==1))
-    p = 0
     #
-    # # print(trees[0])
-    # #  divide the obtained corpus into training set
-    # # and test set such that the test set is formed by the last 10% of the sentences.
-    # shape = int(len(trees) * TRAIN_PERC)
-    # # train, test = sents[:int(len(sents)*TRAIN_PERC)], sents[int(len(sents)*TRAIN_PERC):]
-    # train, test = np.split(trees, [shape])
+    # TESTER LINES
+    sents = sents[:500]
+    trees = trees[:500]
+    #############
+    split_index = int(len(sents) * 0.9)
+    trees_train = trees[:split_index]
+    trees_test = trees[split_index:]
+    sents_train = sents[:split_index]
+    sents_test = sents[split_index:]
+
+    corpus, POS_tags = get_corpus_and_tags_from_trees(trees)
+    word_matrix_size, word_map = create_matrix(corpus)
+    tag_matrix_size, tag_map = create_matrix(POS_tags)
+    f = 0
+
+    t_list_feat_dict = create_list_of_feature_dic(sents_test, word_matrix_size, word_map, tag_matrix_size, tag_map,
+                                                  pickles=True,
+                                                  pkl_path="list_feat_dict_test.pkl")
+    # Q3
+    w = perceptron(trees_train, sents_train, word_matrix_size, word_map, tag_matrix_size, tag_map)
+    print(np.sum(w))
+    # Q4
+    # w4 = perceptron(trees_train, sents_train, word_matrix_size, word_map, tag_matrix_size, tag_map, augmented=True)
+
+    #Evaluate:
+    score = evaluate(theta=w,tree_test= trees_test,sent_test= sents_test, t_list_feat_dict=t_list_feat_dict)
+    print(score)
+if __name__ == '__main__':
+    main()
